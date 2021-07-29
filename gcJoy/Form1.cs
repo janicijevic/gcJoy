@@ -15,14 +15,18 @@ namespace gcJoy
     public partial class Form1 : Form
     {
         bool _continue;
-        bool rumble = false;
         SerialPort _serialPort;
         Thread readThread;
 
-        //// Declaring one joystick (Device id 1) and a position structure. 
-        public vJoy joystick;
-        public vJoy.JoystickState iReport;
-        public uint id = 1;
+        // Declaring jostick array and corresponding state objects
+        static int joyCount = 2;
+        public vJoy[] joysticks = new vJoy[joyCount];
+        public vJoy.JoystickState[] iReports = new vJoy.JoystickState[joyCount];
+        bool[] rumbles = { false, false };
+
+        ///Serial communication parmaters
+        string port = "COM5";
+        int baud = 115200;
 
         public Form1()
         {
@@ -31,23 +35,25 @@ namespace gcJoy
 
         private void Form1_Load(object sender, EventArgs e)
         {
-            _serialPort = new SerialPort("COM5", 115200);
+            _serialPort = new SerialPort(port, baud);
             _serialPort.DtrEnable = true; //Make sure Arduino is reset when port is opened
 
-            joystick = new vJoy();
-            iReport = new vJoy.JoystickState();
+            for(int i = 0; i<joyCount; i++) {
+                uint id = (uint)i + 1;
+                joysticks[i] = new vJoy();
+                iReports[i] = new vJoy.JoystickState();
 
-            // Get the state of the requested device
-            VjdStat status = joystick.GetVJDStatus(id);
-            // Acquire the target
-            if ((status == VjdStat.VJD_STAT_OWN) || ((status == VjdStat.VJD_STAT_FREE) && (!joystick.AcquireVJD(id))))
-            {
-                infoBox.Text = String.Format("Failed to acquire vJoy device number {0}.", id); return;
+                // Get the state of the requested device
+                VjdStat status = joysticks[i].GetVJDStatus(id);
+                // Acquire the target
+                if ((status == VjdStat.VJD_STAT_OWN) || ((status == VjdStat.VJD_STAT_FREE) && (!joysticks[i].AcquireVJD(id))))
+                {
+                    infoBox.Text = String.Format("Failed to acquire vJoy device number {0}.", id); return;
+                }
+                else
+                    infoBox.Text = String.Format("Acquired: vJoy device number {0}.", id);
+
             }
-            else
-                infoBox.Text = String.Format("Acquired: vJoy device number {0}.", id);
-
-
             readThread = new Thread(new ThreadStart(Read));
 
             _serialPort.Open();
@@ -93,35 +99,39 @@ namespace gcJoy
             while (_continue)
             {
 
-                _serialPort.WriteLine("get1"+ (rumble ? "1" : "0") + "-" );
-
-                Thread.Sleep(10);
-                if (_serialPort.BytesToRead > 0)
+                for (int i = 0; i < joyCount; i++)
                 {
-                    int bytes = _serialPort.BytesToRead;    
-                    string message = _serialPort.ReadLine();
-                    message = message.Substring(0, message.Length - 2);
+                    uint id = (uint)i + 1;
+                    _serialPort.WriteLine("get" + id.ToString() + (rumbles[i] ? "1" : "0") + "-");
 
-                    SetText(message);
-
-                    //Parse message
-                    if (message.Length == 64 && message.All(c => c >= '0' && c <= '9'))
+                    Thread.Sleep(10);
+                    if (_serialPort.BytesToRead > 0)
                     {
-                        parseMessage(message);
-                        if (!joystick.UpdateVJD(id, ref iReport)) SetText(String.Format("Failed to update joystick number {0}", id));
+                        int bytes = _serialPort.BytesToRead;
+                        string message = _serialPort.ReadLine();
+                        message = message.Substring(0, message.Length - 2);
+
+                        SetText(message);
+
+                        //Parse message
+                        if (message.Length == 64 && message.All(c => c >= '0' && c <= '9'))
+                        {
+                            parseMessage(message, i);
+                            if (!joysticks[i].UpdateVJD(id, ref iReports[i])) SetText(String.Format("Failed to update joystick number {0}", id));
+                        }
+                        else if (message == "disconnected") SetText("Controller disconnected");
+                        else if (message == "disabled") SetText("Controller is disabled");
+                        else SetText("Error");
                     }
-                    else if (message == "disconnected") SetText("Controller disconnected");
-                    else if (message == "disabled") SetText("Controller is disabled");
-                    else SetText("Error");
-                }
-                else
-                {
-                    Console.WriteLine("No response");
+                    else
+                    {
+                        SetText("No response");
+                    }
                 }
 
             }
         }
-        public void parseMessage(string message)
+        public void parseMessage(string message, int i)
         {
             //Parse the message to get button states
             /*
@@ -134,13 +144,13 @@ namespace gcJoy
             Byte 6	  Left Button Value (8 bit) - may be 4-bit mode also?
             Byte 7	  Right Button Value (8 bit) - may be 4-bit mode also?
             */
-            iReport.Buttons = parseButtons(message.Substring(3, 13));
-            iReport.AxisX = toInt(message.Substring(8 * 2, 8));     //Main joystick
-            iReport.AxisY = toInt(message.Substring(8 * 3, 8));
-            iReport.AxisXRot = toInt(message.Substring(8 * 4, 8));  //C stick
-            iReport.AxisYRot = toInt(message.Substring(8 * 5, 8));
-            iReport.Slider = toInt(message.Substring(8 * 6, 8));    //Triggers
-            iReport.Dial = toInt(message.Substring(8 * 7, 8));
+            iReports[i].Buttons = parseButtons(message.Substring(3, 13));
+            iReports[i].AxisX = toInt(message.Substring(8 * 2, 8));     //Main joystick
+            iReports[i].AxisY = toInt(message.Substring(8 * 3, 8));
+            iReports[i].AxisXRot = toInt(message.Substring(8 * 4, 8));  //C stick
+            iReports[i].AxisYRot = toInt(message.Substring(8 * 5, 8));
+            iReports[i].Slider = toInt(message.Substring(8 * 6, 8));    //Triggers
+            iReports[i].Dial = toInt(message.Substring(8 * 7, 8));
         }
         public int toInt(string s)
         {
@@ -176,9 +186,14 @@ namespace gcJoy
             _serialPort.Close();
         }
 
-        private void rumbleCheck_CheckedChanged(object sender, EventArgs e)
+        private void rumbleCheck1_CheckedChanged(object sender, EventArgs e)
         {
-            rumble = !rumble;
+            rumbles[0] = !rumbles[0];
+        }
+
+        private void rumbleCheck2_CheckedChanged(object sender, EventArgs e)
+        {
+            rumbles[1] = !rumbles[1];
         }
     }
 }
