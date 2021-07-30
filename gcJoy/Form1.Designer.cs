@@ -33,6 +33,7 @@ namespace gcJoy
             this.rumbleCheck1 = new System.Windows.Forms.CheckBox();
             this.infoBox = new System.Windows.Forms.TextBox();
             this.rumbleCheck2 = new System.Windows.Forms.CheckBox();
+            this.label1 = new System.Windows.Forms.Label();
             this.SuspendLayout();
             // 
             // textBox1
@@ -40,13 +41,13 @@ namespace gcJoy
             this.textBox1.Location = new System.Drawing.Point(12, 12);
             this.textBox1.Multiline = true;
             this.textBox1.Name = "textBox1";
-            this.textBox1.Size = new System.Drawing.Size(478, 102);
+            this.textBox1.Size = new System.Drawing.Size(622, 124);
             this.textBox1.TabIndex = 0;
             // 
             // rumbleCheck1
             // 
             this.rumbleCheck1.AutoSize = true;
-            this.rumbleCheck1.Location = new System.Drawing.Point(23, 159);
+            this.rumbleCheck1.Location = new System.Drawing.Point(12, 223);
             this.rumbleCheck1.Name = "rumbleCheck1";
             this.rumbleCheck1.Size = new System.Drawing.Size(71, 17);
             this.rumbleCheck1.TabIndex = 1;
@@ -57,15 +58,15 @@ namespace gcJoy
             // infoBox
             // 
             this.infoBox.Enabled = false;
-            this.infoBox.Location = new System.Drawing.Point(12, 230);
+            this.infoBox.Location = new System.Drawing.Point(12, 299);
             this.infoBox.Name = "infoBox";
-            this.infoBox.Size = new System.Drawing.Size(478, 20);
+            this.infoBox.Size = new System.Drawing.Size(622, 20);
             this.infoBox.TabIndex = 2;
             // 
             // rumbleCheck2
             // 
             this.rumbleCheck2.AutoSize = true;
-            this.rumbleCheck2.Location = new System.Drawing.Point(23, 183);
+            this.rumbleCheck2.Location = new System.Drawing.Point(12, 247);
             this.rumbleCheck2.Name = "rumbleCheck2";
             this.rumbleCheck2.Size = new System.Drawing.Size(71, 17);
             this.rumbleCheck2.TabIndex = 3;
@@ -73,11 +74,21 @@ namespace gcJoy
             this.rumbleCheck2.UseVisualStyleBackColor = true;
             this.rumbleCheck2.CheckedChanged += new System.EventHandler(this.rumbleCheck2_CheckedChanged);
             // 
+            // label1
+            // 
+            this.label1.AutoSize = true;
+            this.label1.Location = new System.Drawing.Point(9, 196);
+            this.label1.Name = "label1";
+            this.label1.Size = new System.Drawing.Size(35, 13);
+            this.label1.TabIndex = 4;
+            this.label1.Text = "label1";
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(502, 262);
+            this.ClientSize = new System.Drawing.Size(646, 331);
+            this.Controls.Add(this.label1);
             this.Controls.Add(this.rumbleCheck2);
             this.Controls.Add(this.infoBox);
             this.Controls.Add(this.rumbleCheck1);
@@ -97,6 +108,7 @@ namespace gcJoy
         private System.Windows.Forms.CheckBox rumbleCheck1;
         private System.Windows.Forms.TextBox infoBox;
         private System.Windows.Forms.CheckBox rumbleCheck2;
+        private System.Windows.Forms.Label label1;
     }
 }
 

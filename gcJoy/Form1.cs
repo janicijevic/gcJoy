@@ -25,7 +25,7 @@ namespace gcJoy
         bool[] rumbles = { false, false };
 
         ///Serial communication parmaters
-        string port = "COM5";
+        string port = "COM4";
         int baud = 115200;
 
         public Form1()
@@ -48,10 +48,10 @@ namespace gcJoy
                 // Acquire the target
                 if ((status == VjdStat.VJD_STAT_OWN) || ((status == VjdStat.VJD_STAT_FREE) && (!joysticks[i].AcquireVJD(id))))
                 {
-                    infoBox.Text = String.Format("Failed to acquire vJoy device number {0}.", id); return;
+                    SetText(this, infoBox, String.Format("Failed to acquire vJoy device number {0}.", id)); return;
                 }
                 else
-                    infoBox.Text = String.Format("Acquired: vJoy device number {0}.", id);
+                    SetText(this, infoBox, String.Format("Acquired: vJoy device number {0}.", id));
 
             }
             readThread = new Thread(new ThreadStart(Read));
@@ -63,21 +63,21 @@ namespace gcJoy
                 
         }
 
-        delegate void SetTextCallback(string text);
+        delegate void SetTextCallback(Form f, Control ctrl, string text);
 
-        private void SetText(string text)
+        public static void SetText(Form form, Control ctrl, string text)
         {
-            // InvokeRequired required compares the thread ID of the
-            // calling thread to the thread ID of the creating thread.
-            // If these threads are different, it returns true.
-            if (this.textBox1.InvokeRequired)
+            // InvokeRequired required compares the thread ID of the 
+            // calling thread to the thread ID of the creating thread. 
+            // If these threads are different, it returns true. 
+            if (ctrl.InvokeRequired)
             {
                 SetTextCallback d = new SetTextCallback(SetText);
-                this.Invoke(d, new object[] { text });
+                form.Invoke(d, new object[] { form, ctrl, text });
             }
             else
             {
-                this.textBox1.Text = text;
+                ctrl.Text = text;
             }
         }
 
@@ -111,21 +111,21 @@ namespace gcJoy
                         string message = _serialPort.ReadLine();
                         message = message.Substring(0, message.Length - 2);
 
-                        SetText(message);
+                        SetText(this, textBox1, message);
 
                         //Parse message
                         if (message.Length == 64 && message.All(c => c >= '0' && c <= '9'))
                         {
                             parseMessage(message, i);
-                            if (!joysticks[i].UpdateVJD(id, ref iReports[i])) SetText(String.Format("Failed to update joystick number {0}", id));
+                            if (!joysticks[i].UpdateVJD(id, ref iReports[i])) SetText(this, textBox1, String.Format("Failed to update joystick number {0}", id));
                         }
-                        else if (message == "disconnected") SetText("Controller disconnected");
-                        else if (message == "disabled") SetText("Controller is disabled");
-                        else SetText("Error");
+                        else if (message == "disconnected") SetText(this, textBox1, "Controller disconnected");
+                        else if (message == "disabled") SetText(this, textBox1, "Controller is disabled");
+                        else SetText(this, textBox1, "Error");
                     }
                     else
                     {
-                        SetText("No response");
+                        SetText(this, textBox1, "No response");
                     }
                 }
 
