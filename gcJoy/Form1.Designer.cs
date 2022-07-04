@@ -141,7 +141,7 @@ namespace gcJoy
             // portTimer
             // 
             this.portTimer.Enabled = true;
-            this.portTimer.Interval = 300;
+            this.portTimer.Interval = 500;
             this.portTimer.Tick += new System.EventHandler(this.portTimer_Tick);
             // 
             // textBox2

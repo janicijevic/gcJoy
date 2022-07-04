@@ -14,19 +14,21 @@ namespace gcJoy
 {
     public partial class Form1 : Form
     {
-        bool _continue, serialOpen = false;
-        SerialPort _serialPort;
         Thread readThread;
+        AutoResetEvent readStop = new AutoResetEvent(false);    // Signal for read to stop
 
         // Declaring jostick array and corresponding state objects
-        static int joyCount = 2;
+        static int joyCount = 2;          // If this is changed text and info boxes should be added
         public vJoy[] joysticks = new vJoy[joyCount];
         public vJoy.JoystickState[] iReports = new vJoy.JoystickState[joyCount];
         bool[] rumbles = { false, false };
+        TextBox[] textBoxes = new TextBox[joyCount];
+        TextBox[] infoBoxes = new TextBox[joyCount];
 
         ///Serial communication parmaters
-        string port = "COM4";
-        int baud = 115200;
+        SerialPort _serialPort;
+        string port = "";
+        int baud = 19200;
         List<string> prevPortList;
         bool detecting = false;
 
@@ -37,9 +39,12 @@ namespace gcJoy
 
         private void Form1_Load(object sender, EventArgs e)
         {
+            textBoxes[0] = textBox1;
+            textBoxes[1] = textBox2;
+            infoBoxes[0] = infoBox1;
+            infoBoxes[1] = infoBox2;
             vJoyInit();
             portTimer.Start();
-            
         }
 
 
@@ -56,94 +61,176 @@ namespace gcJoy
                 // Acquire the target
                 if ((status == VjdStat.VJD_STAT_OWN) || ((status == VjdStat.VJD_STAT_FREE) && (!joysticks[i].AcquireVJD(id))))
                 {
-                    if(id==1) SetText(infoBox1, String.Format("Failed to acquire vJoy device number {0}.", id)); 
-                    else SetText(infoBox2, String.Format("Failed to acquire vJoy device number {0}.", id));
+                    SetText(infoBoxes[i], String.Format("Failed to acquire vJoy device number {0}.", id)); 
                     return;
                 }
                 else
-                    if (id == 1) SetText(infoBox1, String.Format("Acquired: vJoy device number {0}.", id));
-                else SetText(infoBox2, String.Format("Acquired: vJoy device number {0}.", id));
+                    SetText(infoBoxes[i], String.Format("Acquired: vJoy device number {0}.", id));
 
             }
         }
 
+        // Read thread
         public void Read()
         {
-            SetText(infoLbl, "Connecting to Arduino...");
-            while (_continue)
+            try
             {
-                if (_serialPort.BytesToRead > 0)
+                Console.WriteLine("In read thread");
+                bool connected = false;
+                SetText(infoLbl, "Connecting to Arduino...");
+                while (_serialPort.IsOpen)
                 {
-                    string message = _serialPort.ReadLine();
-
-                    if (message.Contains("ready"))
+                    if (!connected)
                     {
-                        SetText(infoLbl, "Arduino connected.");
-                        break;
-                    }
-                }
-            }
-            while (_continue)
-            {
-                //Unplugged arduino durring operation causes a crash !!
-                //see stackoverflow for safeserialport class ?
-
-                for (int i = 0; i < joyCount; i++)
-                {
-                    uint id = (uint)i + 1;
-                    _serialPort.WriteLine("get" + id.ToString() + (rumbles[i] ? "1" : "0") + "-");
-
-                    Thread.Sleep(10);
-                    if (_serialPort.BytesToRead > 0)
-                    {
-                        int bytes = _serialPort.BytesToRead;
-                        string message = _serialPort.ReadLine();
-                        message = message.Substring(0, message.Length - 2);
-
-                        //Show message recieved from arduino in textbox1
-                        if (id == 1) SetText(textBox1, message);
-                        else SetText(textBox2, message);
-
-                        //Parse message
-                        if (message.Length == 64 && message.All(c => c >= '0' && c <= '9'))
+                        //Console.WriteLine("Connecting");
+                        if (_serialPort.BytesToRead > 0)
                         {
-                            parseMessage(message, i);
-                            if (!joysticks[i].UpdateVJD(id, ref iReports[i]))
+                            string message = _serialPort.ReadLine();
+                            SetText(textBox1, message);
+                            Console.WriteLine(message);
+                            if (message.Contains("ready"))
                             {
-                                if (id == 1) SetText(textBox1, String.Format("Failed to update joystick number {0}, reacquiring...", id));
-                                else SetText(textBox2, String.Format("Failed to update joystick number {0}, reacquiring...", id));
-                                joysticks[i].AcquireVJD(id);
-                                VjdStat status = joysticks[i].GetVJDStatus(id);
-                                //string mess;
-                                //switch (status)
-                                //{
-                                //    case VjdStat.VJD_STAT_BUSY: mess = "busy"; break;
-                                //    case VjdStat.VJD_STAT_FREE: mess = "free"; break;
-                                //    case VjdStat.VJD_STAT_MISS: mess = "miss"; break;
-                                //    case VjdStat.VJD_STAT_OWN: mess = "own"; break;
-                                //    default: mess = "unknown"; break;
-                                //}
-                                //if (id == 1) SetText(textBox1, mess);
-                                //else SetText(textBox2, mess);
+                                SetText(infoLbl, "Arduino connected.");
+                                connected = true;
                             }
-
-
-
                         }
-                        else if (message == "disconnected") SetText(textBox1, "Controller disconnected");
-                        else if (message == "disabled") SetText(textBox1, "Controller is disabled");
-                        else SetText(textBox1, "Error");
                     }
                     else
                     {
-                        SetText(textBox1, "No response");
+                        //Console.WriteLine("Probing controllers");
+                        for (int i = 0; i < joyCount; i++)
+                        {
+                            readJoy(i);
+                        }
+                    }
+
+                    // Uslov da se zaustavi readThread
+                    if (readStop.WaitOne(0))
+                    {
+                        Console.WriteLine("Signal to stop read thread");
+                        break;
                     }
                 }
-
+            }catch(Exception e)
+            {
+                Console.WriteLine("Caught exception in read thread: " + e.Message);
+            }
+            finally
+            {
+                if (_serialPort != null)
+                {
+                    Console.WriteLine("Closing serialPort");
+                    _serialPort.Close();
+                }
             }
         }
 
-        public void parseMessage(string message, int i)
+        private void readJoy(int i)
+        {
+            uint id = (uint)i + 1;
+            _serialPort.WriteLine("get" + id.ToString() + (rumbles[i] ? "1" : "0") + "-");
+
+            //Header with format: <controller id 2b><status 5b><parity bit 1b>
+            //  status = 0 indicates controller is connected and the next 8 bytes are controller data + 1 checksum byte
+            //  status = 1 indicates controller is currently not connected to port
+            //  status = 2 indicates controller is disabled by driver
+            // If error in header detected ignore next 9 bytes just in case? until i send a request again ili flush idk
+
+
+            // Read header
+            byte tmp = (byte)_serialPort.ReadByte();
+            //Console.WriteLine(String.Format("Probing controller {0} ({1})", tmp >> 6, i));
+            //byteToString(tmp);
+            
+            //if (!checkParity(tmp)) {Thread.Sleep(20); _serialPort.DiscardIn<or Out>Buffer(); return;}
+            int stat = (tmp>>1) & 0b11111;
+            int cid = (tmp >> 6);
+            if (cid != i)
+            {
+                Console.WriteLine(String.Format("Probed {0} but got response from {1}", i, cid));
+                return;
+            }
+
+            // Read data
+            if (stat == 0)
+            {
+
+                byte[] data = new byte[8];
+                byte checksum = 0;
+                for (int x = 0; x < 8; x++)
+                {
+                    tmp = (byte)_serialPort.ReadByte();
+                    data[x] = tmp;
+                    //byteToString(tmp);
+                    checksum ^= tmp;
+                }
+                tmp = (byte)_serialPort.ReadByte();
+                if (tmp == checksum)
+                {
+                    // Checksum correct -> parse the message
+                    parseMessage(data, i);
+                    writeMessageToTextBox(data, i);
+                    if (!joysticks[i].UpdateVJD(id, ref iReports[i]))
+                    {
+                        SetText(infoBoxes[i], String.Format("Failed to update joystick number {0}, reacquiring...", id));
+                        joysticks[i].AcquireVJD(id);
+                        //VjdStat _status = joysticks[i].GetVJDStatus(id);
+                        //string mess;
+                        //switch (status)
+                        //{
+                        //    case VjdStat.VJD_STAT_BUSY: mess = "busy"; break;
+                        //    case VjdStat.VJD_STAT_FREE: mess = "free"; break;
+                        //    case VjdStat.VJD_STAT_MISS: mess = "miss"; break;
+                        //    case VjdStat.VJD_STAT_OWN: mess = "own"; break;
+                        //    default: mess = "unknown"; break;
+                        //}
+                        //SetText(textBoxes[i], mess);
+                    }
+                }
+                else
+                {
+                    // Checksum for data incorrect
+                    // TODO: Implement some synchronization? with some bit stuffing
+                }
+            }
+            else
+            {
+                // Controller disconnected or disabled
+                if(stat == 1)
+                    SetText(infoBoxes[i], String.Format("Controller {0} is disconnected", i));
+                else if(stat == 2)
+                    SetText(infoBoxes[i], String.Format("Controller {0} is disabled", i));
+            }
+            return;
+
+
+
+        }
+
+        public void writeMessageToTextBox(byte[] message, int i)
+        {
+            string res = "";
+            for(int x = 0; x<8; x++)
+            {
+                for (int y = 7; y >= 0; y--)
+                {
+                    res += ((message[x] >> y) & 1) == 1 ? "1" : "0";
+                }
+            }
+            SetText(textBoxes[i], res);
+        }
+
+        public void byteToString(byte tmp)
+        {
+            for (int i = 7; i >=0; i--)
+            {
+                Console.Write((tmp>>i)&1);
+            }
+            Console.WriteLine();
+
+        }
+
+        public void parseMessage(byte[] message, int i)
         {
             //Parse the message to get button states
             /*
@@ -156,39 +243,92 @@ namespace gcJoy
             Byte 6	  Left Button Value (8 bit) - may be 4-bit mode also?
             Byte 7	  Right Button Value (8 bit) - may be 4-bit mode also?
             */
-            iReports[i].Buttons = parseButtons(message.Substring(3, 13));
-            iReports[i].AxisX = toInt(message.Substring(8 * 2, 8));     //Main joystick
-            iReports[i].AxisY = toInt(message.Substring(8 * 3, 8));
-            iReports[i].AxisXRot = toInt(message.Substring(8 * 4, 8));  //C stick
-            iReports[i].AxisYRot = toInt(message.Substring(8 * 5, 8));
-            iReports[i].Slider = toInt(message.Substring(8 * 6, 8));    //Triggers
-            iReports[i].Dial = toInt(message.Substring(8 * 7, 8));
+            iReports[i].Buttons = parseButtons(message);
+            iReports[i].AxisX = message[2];
+            iReports[i].AxisY = message[3];
+            iReports[i].AxisXRot = message[4];
+            iReports[i].AxisYRot = message[5];
+            iReports[i].Slider = message[6];
+            iReports[i].Dial = message[7];
         }
-        public int toInt(string s)
+
+        public uint parseButtons(byte[] message)
         {
-            //Maps gamecube axis range to VJoy axis range
-            int val = Convert.ToInt32(s, 2);
-            return (int)((val / 255.0) * 0x7FFF);
-        }
-        public uint parseButtons(string s)
-        {
-            //String content: Start  Y  X  B  A  1  L  R  Z  D-Up  D - Down  D - Right  D - Left
+            // Rearrange buttons for simpler mapping?
             //Button mapping: A, B, Start, X, Y, Z, L, R, Up, Down, Left, Right
             //                0  1  2      3  4  5  6  7  8   9     10    11
-            uint n = 0;
-            n += (uint)(s[0] - '0') << 2; //Start
-            n += (uint)(s[1] - '0') << 4; //Y
-            n += (uint)(s[2] - '0') << 3; //X
-            n += (uint)(s[3] - '0') << 1; //B
-            n += (uint)(s[4] - '0') << 0; //A
-            n += (uint)(s[6] - '0') << 6; //L
-            n += (uint)(s[7] - '0') << 7; //R
-            n += (uint)(s[8] - '0') << 5; //Z
-            n += (uint)(s[9] - '0') << 8; //Dup
-            n += (uint)(s[10] - '0') << 9; //Ddown
-            n += (uint)(s[11] - '0') << 10; //Dright
-            n += (uint)(s[12] - '0') << 11; //Dleft
-            return n;
+
+            uint res = 0;
+            res |= (uint)message[0] & 1; // A
+            res |= ((uint)message[0] >> 1 & 1) << 1; // B
+            res |= ((uint)message[0] >> 4 & 1) << 2; // Start
+            res |= ((uint)message[0] >> 2 & 1) << 3; // X
+            res |= ((uint)message[0] >> 3 & 1) << 4; // Y
+            res |= ((uint)message[1] >> 4 & 1) << 5; // Z
+            res |= ((uint)message[1] >> 6 & 1) << 6; // L
+            res |= ((uint)message[1] >> 5 & 1) << 7; // R
+            res |= ((uint)message[1] >> 3 & 1) << 8; // Up
+            res |= ((uint)message[1] >> 2 & 1) << 9; // Down
+            res |= ((uint)message[1] >> 0 & 1) << 10; // Left
+            res |= ((uint)message[1] >> 1 & 1) << 11; // Right
+
+            return res;
+        }
+
+
+        // Old message parsing with string
+        //public void parseMessage(string message, int i)
+        //{
+        //    //Parse the message to get button states
+        //    /*
+        //    Byte 0    0	 0	0	Start	Y	X	B	A
+        //    Byte 1	  1	 L	R	Z	D-Up	D-Down	D-Right	  D-Left
+        //    Byte 2	  Joystick X Value (8 bit)
+        //    Byte 3	  Joystick Y Value (8 bit)
+        //    Byte 4	  C-Stick X Value (8 bit)
+        //    Byte 5	  C-Stick Y Value (8 bit)
+        //    Byte 6	  Left Button Value (8 bit) - may be 4-bit mode also?
+        //    Byte 7	  Right Button Value (8 bit) - may be 4-bit mode also?
+        //    */
+        //    iReports[i].Buttons = parseButtons(message.Substring(3, 13));
+        //    iReports[i].AxisX = toInt(message.Substring(8 * 2, 8));     //Main joystick
+        //    iReports[i].AxisY = toInt(message.Substring(8 * 3, 8));
+        //    iReports[i].AxisXRot = toInt(message.Substring(8 * 4, 8));  //C stick
+        //    iReports[i].AxisYRot = toInt(message.Substring(8 * 5, 8));
+        //    iReports[i].Slider = toInt(message.Substring(8 * 6, 8));    //Triggers
+        //    iReports[i].Dial = toInt(message.Substring(8 * 7, 8));
+        //}
+        //public int toInt(string s)
+        //{
+        //    //Maps gamecube axis range to VJoy axis range
+        //    int val = Convert.ToInt32(s, 2);
+        //    return (int)((val / 255.0) * 0x7FFF);
+        //}
+        //public uint parseButtons(string s)
+        //{
+        //    //String content: Start  Y  X  B  A  1  L  R  Z  D-Up  D - Down  D - Right  D - Left
+        //    //Button mapping: A, B, Start, X, Y, Z, L, R, Up, Down, Left, Right
+        //    //                0  1  2      3  4  5  6  7  8   9     10    11
+        //    uint n = 0;
+        //    n += (uint)(s[0] - '0') << 2; //Start
+        //    n += (uint)(s[1] - '0') << 4; //Y
+        //    n += (uint)(s[2] - '0') << 3; //X
+        //    n += (uint)(s[3] - '0') << 1; //B
+        //    n += (uint)(s[4] - '0') << 0; //A
+        //    n += (uint)(s[6] - '0') << 6; //L
+        //    n += (uint)(s[7] - '0') << 7; //R
+        //    n += (uint)(s[8] - '0') << 5; //Z
+        //    n += (uint)(s[9] - '0') << 8; //Dup
+        //    n += (uint)(s[10] - '0') << 9; //Ddown
+        //    n += (uint)(s[11] - '0') << 10; //Dright
+        //    n += (uint)(s[12] - '0') << 11; //Dleft
+        //    return n;
+        //}
+
+
+        private void stopReadThread()
+        {
+            readStop.Set();
         }
 
         delegate void SetTextCallback(Control ctrl, string text);
@@ -206,14 +346,12 @@ namespace gcJoy
             else ctrl.Text = text;
         }
 
+
+        // ------------------------ Events ------------------------
+
         private void Form1_FormClosed(object sender, FormClosedEventArgs e)
         {
-            if (serialOpen)
-            {
-                _continue = false;
-                readThread.Abort();
-                _serialPort.Close();
-            }
+            stopReadThread();
         }
 
         private void rumbleCheck1_CheckedChanged(object sender, EventArgs e)
@@ -236,35 +374,39 @@ namespace gcJoy
 
         private void connectBtn_Click(object sender, EventArgs e)
         {
+            if (_serialPort != null && _serialPort.IsOpen)
+            {
+                SetText(infoLbl, "Disconnecting port...");
+                stopReadThread();
+                Thread.Sleep(5000);
+                _serialPort.Close();
+            }
             //Connect serial port
+            Console.WriteLine("Start connecting");
             SetText(infoLbl, String.Format("Connecting to serial port on port {0}...", port));
             if (portList.Items.Count == 0)
             {
                 port = "";
-                SetText(infoLbl, "No Com port selected"); return;
+                SetText(infoLbl, "No Com port selected");
+                return;
             }
             port = portList.SelectedItem.ToString();
             _serialPort = new SerialPort(port, baud);
-            _serialPort.DtrEnable = true; //Make sure Arduino is reset when port is opened
-
-            readThread = new Thread(new ThreadStart(Read));
+            _serialPort.DtrEnable = true; // Reset Arduino on connect
 
             _serialPort.Open();
-            _continue = true;
-            serialOpen = true;
 
+            readThread = new Thread(new ThreadStart(Read));
             readThread.Start();
         }
+
 
         private void disconnectBtn_Click(object sender, EventArgs e)
         {
             //Disconnect serial port
-            SetText(infoLbl, "Disconnecting serial port...");
             if (port == "") { SetText(infoLbl, "No Com port selected"); return; }
-            _continue = false;
-            serialOpen = false;
-            readThread.Abort();
-            _serialPort.Close();
+            SetText(infoLbl, "Disconnecting serial port...");
+            stopReadThread();
             SetText(infoLbl, "Serial port disconnected.");
 
         }
@@ -291,6 +433,7 @@ namespace gcJoy
                     portList.SetSelected(tmp.IndexOf(port), true);
                     SetText(infoLbl, String.Format("Selected port {0}.", port));
                 }
+                prevPortList = tmp;
 
             }
         }
