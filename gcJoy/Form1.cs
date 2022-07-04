@@ -26,7 +26,7 @@ namespace gcJoy
         TextBox[] infoBoxes = new TextBox[joyCount];
 
         ///Serial communication parmaters
-        SerialPort _serialPort;
+        SerialPort serialPort;
         string port = "";
         int baud = 19200;
         List<string> prevPortList;
@@ -78,14 +78,14 @@ namespace gcJoy
                 Console.WriteLine("In read thread");
                 bool connected = false;
                 SetText(infoLbl, "Connecting to Arduino...");
-                while (_serialPort.IsOpen)
+                while (serialPort.IsOpen)
                 {
                     if (!connected)
                     {
                         //Console.WriteLine("Connecting");
-                        if (_serialPort.BytesToRead > 0)
+                        if (serialPort.BytesToRead > 0)
                         {
-                            string message = _serialPort.ReadLine();
+                            string message = serialPort.ReadLine();
                             SetText(textBox1, message);
                             Console.WriteLine(message);
                             if (message.Contains("ready"))
@@ -117,10 +117,10 @@ namespace gcJoy
             }
             finally
             {
-                if (_serialPort != null)
+                if (serialPort != null)
                 {
                     Console.WriteLine("Closing serialPort");
-                    _serialPort.Close();
+                    serialPort.Close();
                 }
             }
         }
@@ -128,7 +128,7 @@ namespace gcJoy
         private void readJoy(int i)
         {
             uint id = (uint)i + 1;
-            _serialPort.WriteLine("get" + id.ToString() + (rumbles[i] ? "1" : "0") + "-");
+            serialPort.WriteLine("get" + id.ToString() + (rumbles[i] ? "1" : "0") + "-");
 
             //Header with format: <controller id 2b><status 5b><parity bit 1b>
             //  status = 0 indicates controller is connected and the next 8 bytes are controller data + 1 checksum byte
@@ -138,11 +138,11 @@ namespace gcJoy
 
 
             // Read header
-            byte tmp = (byte)_serialPort.ReadByte();
+            byte tmp = (byte)serialPort.ReadByte();
             //Console.WriteLine(String.Format("Probing controller {0} ({1})", tmp >> 6, i));
             //byteToString(tmp);
             
-            //if (!checkParity(tmp)) {Thread.Sleep(20); _serialPort.DiscardIn<or Out>Buffer(); return;}
+            //if (!checkParity(tmp)) {Thread.Sleep(20); serialPort.DiscardIn<or Out>Buffer(); return;}
             int stat = (tmp>>1) & 0b11111;
             int cid = (tmp >> 6);
             if (cid != i)
@@ -159,12 +159,12 @@ namespace gcJoy
                 byte checksum = 0;
                 for (int x = 0; x < 8; x++)
                 {
-                    tmp = (byte)_serialPort.ReadByte();
+                    tmp = (byte)serialPort.ReadByte();
                     data[x] = tmp;
                     //byteToString(tmp);
                     checksum ^= tmp;
                 }
-                tmp = (byte)_serialPort.ReadByte();
+                tmp = (byte)serialPort.ReadByte();
                 if (tmp == checksum)
                 {
                     // Checksum correct -> parse the message
@@ -244,12 +244,12 @@ namespace gcJoy
             Byte 7	  Right Button Value (8 bit) - may be 4-bit mode also?
             */
             iReports[i].Buttons = parseButtons(message);
-            iReports[i].AxisX = message[2];
-            iReports[i].AxisY = message[3];
-            iReports[i].AxisXRot = message[4];
-            iReports[i].AxisYRot = message[5];
-            iReports[i].Slider = message[6];
-            iReports[i].Dial = message[7];
+            iReports[i].AxisX = convertValue(message[2]);
+            iReports[i].AxisY = convertValue(message[3]);
+            iReports[i].AxisXRot = convertValue(message[4]);
+            iReports[i].AxisYRot = convertValue(message[5]);
+            iReports[i].Slider = convertValue(message[6]);
+            iReports[i].Dial = convertValue(message[7]);
         }
 
         public uint parseButtons(byte[] message)
@@ -275,6 +275,10 @@ namespace gcJoy
             return res;
         }
 
+        public int convertValue(byte val)
+        {
+            return (int)((val / 255.0) * 0x7FFF);
+        }
 
         // Old message parsing with string
         //public void parseMessage(string message, int i)
@@ -374,12 +378,12 @@ namespace gcJoy
 
         private void connectBtn_Click(object sender, EventArgs e)
         {
-            if (_serialPort != null && _serialPort.IsOpen)
+            if (serialPort != null && serialPort.IsOpen)
             {
                 SetText(infoLbl, "Disconnecting port...");
                 stopReadThread();
                 Thread.Sleep(5000);
-                _serialPort.Close();
+                serialPort.Close();
             }
             //Connect serial port
             Console.WriteLine("Start connecting");
@@ -391,10 +395,10 @@ namespace gcJoy
                 return;
             }
             port = portList.SelectedItem.ToString();
-            _serialPort = new SerialPort(port, baud);
-            _serialPort.DtrEnable = true; // Reset Arduino on connect
+            serialPort = new SerialPort(port, baud);
+            serialPort.DtrEnable = true; // Reset Arduino on connect
 
-            _serialPort.Open();
+            serialPort.Open();
 
             readThread = new Thread(new ThreadStart(Read));
             readThread.Start();
