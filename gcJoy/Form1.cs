@@ -21,7 +21,7 @@ namespace gcJoy
         static int joyCount = 2;          // If this is changed text and info boxes should be added
         public vJoy[] joysticks = new vJoy[joyCount];
         public vJoy.JoystickState[] iReports = new vJoy.JoystickState[joyCount];
-        bool[] rumbles = { false, false };
+        int[] rumbles = { 0, 0 };
         TextBox[] textBoxes = new TextBox[joyCount];
         TextBox[] infoBoxes = new TextBox[joyCount];
 
@@ -47,6 +47,38 @@ namespace gcJoy
             portTimer.Start();
         }
 
+        public void FFBCallBack(IntPtr packet, object userData)
+        {
+            // Get device id
+            uint devid = 0;
+            uint tmp = joysticks[0].Ffb_h_DeviceID(packet, ref devid);
+
+            // Get FFB type
+            FFBPType type = 0;
+            tmp = joysticks[0].Ffb_h_Type(packet, ref type);
+
+            Console.Write("Got FFBCallBack -> deviceid " + devid + "type: " + type);
+            if (type == FFBPType.PT_EFOPREP)
+            {
+                vJoy.FFB_EFF_OP op = new vJoy.FFB_EFF_OP();
+                tmp = joysticks[0].Ffb_h_EffOp(packet, ref op);
+                if(op.EffectOp == FFBOP.EFF_START)
+                {
+                    // Potrebno dodatno testiranje da li se rumble ukljucuje na duze
+                    rumbles[devid-1]++;
+                    if (rumbles[devid - 1] > 1) rumbles[devid - 1] = 1;
+                }
+                else if(op.EffectOp == FFBOP.EFF_STOP)
+                {
+                    rumbles[devid-1]--;
+                }
+                Console.Write(" EffOp: " + op.EffectOp);
+            }
+            Console.WriteLine();
+            Console.WriteLine(rumbles[devid - 1]);
+
+        }
+
 
         public void vJoyInit()
         {
@@ -55,6 +87,9 @@ namespace gcJoy
                 uint id = (uint)i + 1;
                 joysticks[i] = new vJoy();
                 iReports[i] = new vJoy.JoystickState();
+
+                // Register Force Feedback callback function
+                joysticks[i].FfbRegisterGenCB(FFBCallBack, 0);
 
                 // Get the state of the requested device
                 VjdStat status = joysticks[i].GetVJDStatus(id);
@@ -128,7 +163,7 @@ namespace gcJoy
         private void readJoy(int i)
         {
             uint id = (uint)i + 1;
-            serialPort.WriteLine("get" + id.ToString() + (rumbles[i] ? "1" : "0") + "-");
+            serialPort.WriteLine("get" + id.ToString() + (rumbles[i]>0 ? "1" : "0") + "-");
 
             //Header with format: <controller id 2b><status 5b><parity bit 1b>
             //  status = 0 indicates controller is connected and the next 8 bytes are controller data + 1 checksum byte
@@ -251,6 +286,10 @@ namespace gcJoy
             iReports[i].Slider = convertValue(message[6]);
             iReports[i].Dial = convertValue(message[7]);
         }
+        public int convertValue(byte val)
+        {
+            return (int)((val / 255.0) * 0x7FFF);
+        }
 
         public uint parseButtons(byte[] message)
         {
@@ -275,10 +314,6 @@ namespace gcJoy
             return res;
         }
 
-        public int convertValue(byte val)
-        {
-            return (int)((val / 255.0) * 0x7FFF);
-        }
 
         // Old message parsing with string
         //public void parseMessage(string message, int i)
@@ -360,12 +395,12 @@ namespace gcJoy
 
         private void rumbleCheck1_CheckedChanged(object sender, EventArgs e)
         {
-            rumbles[0] = !rumbles[0];
+            rumbles[0] = (rumbles[0]>0?0:1);
         }
 
         private void rumbleCheck2_CheckedChanged(object sender, EventArgs e)
         {
-            rumbles[1] = !rumbles[1];
+            rumbles[1] = (rumbles[1] > 0 ? 0 : 1);
         }
 
         private void detectBtn_Click(object sender, EventArgs e)
