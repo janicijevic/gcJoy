@@ -93,6 +93,7 @@ The controller then responds with 64 bits of data:
     </tr>
 </table>
 
+When polling, if the last bit of the 24 bit poll string is 1 the controller will start to rumble, if a 0 is sent it stops.
 
 
 # Components
