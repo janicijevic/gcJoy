@@ -104,7 +104,7 @@ One option is to cut the controller cable and connect the wires directly, but if
 
 <p float="left">
   <img src="img/front.jpg" width="500" />
-  <img src="img/boardMarked.jpg" width="500" /> 
+  <img src="img/board.jpg" width="500" /> 
 </p>
 
 I used an Arduino Uno clone (Wavgat Uno) because it has a 3.3v pin which the 3.43v from the controllers could be connected to. The 3.43v, 5v and ground should be connected to the corresponding pins on the Arduino. Data lines for each of the controller ports should be connected to pins 8, 9, 10 and 11 (this can be changed in the arduino code). Also each data pin should be pulled up to 3.3v with a 1k ohm resistor.
