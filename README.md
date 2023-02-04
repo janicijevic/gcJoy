@@ -11,7 +11,11 @@ An arduino is used to interface with the controller and send information back to
 1. Add the number of controllers you want to connect in the _Configure vJoy_ program by clicking _Add device
 1. Run _gcJoy.exe_ which can be found under Releases or built from _csharp/gcJoy.sln_
 
-
+## Usage
+1. Run the .exe
+1. Plug in Arduino
+1. A new entry should pop up in the panel on the left side (something like "COM3"), select it
+1. Click the "Connect" button and wait for it to connect
 
 # The GameCube controller protocol
 
